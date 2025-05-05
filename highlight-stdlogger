@@ -1,0 +1,38 @@
+#!/bin/sh
+#
+# Script to monitor the StdLogger log file and colorize the output
+#
+
+LOG_FILE="/usr/log/StdLogger.csv"
+
+BG_COLOR_1="\033[44m"
+BG_COLOR_2="\033[46m"
+NOK_COLOR="\033[45m"
+ERROR_COLOR="\033[41m"
+RESET_COLOR="\033[0m"
+
+cycle_color="${RESET_COLOR}"
+tail -F ${LOG_FILE} 2>/dev/null | grep -v "^;" | while IFS= read -r line; do
+    timestamp=$(echo "${line}" | cut -d',' -f0)
+    line=$(echo "${line}" | cut -d',' -f6-)
+    case "${line}" in
+        *"START MAINPRG"*)
+            cycle_count=$(echo "${line}" | cut -d' ' -f2)
+            [ $(( cycle_count % 2 )) -eq 0 ] && cycle_color="${BG_COLOR_1}" || cycle_color="${BG_COLOR_2}"
+            color="${cycle_color}"
+            ;;
+        *"END MAINPRG"*)
+            color="${cycle_color}"
+            ;;
+        *"**** ERROR:"*)
+            color="${ERROR_COLOR}"
+            ;;
+        " [NOK]"*)
+            color="${NOK_COLOR}"
+            ;;
+        *)
+            color="${RESET_COLOR}"
+            ;;
+    esac
+    printf "%b%s%b%b%s%b\n" "${cycle_color}" "${timestamp}" "${RESET_COLOR}" "${color}" "${line}" "${RESET_COLOR}"
+done

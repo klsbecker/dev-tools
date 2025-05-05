@@ -69,7 +69,7 @@ for i in $(seq 1 $MAX_RETRY); do
     fi
 
     # Find the most recent VSCode IPC socket file
-    socket=$(ls /run/user/$UID/vscode-ipc-* -t 2>/dev/null | head -n$i | tail -1)
+    socket=$(find /tmp/vscode-ipc-* -user $USER -printf '%T@ %p\n' | sort -nr | head -n 1 | awk '{print $2}')
 
     if [[ -z ${socket} ]]; then
         log_error "VSCode IPC socket not found. Is VSCode running on this system?"
