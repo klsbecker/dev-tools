@@ -34,6 +34,12 @@ app = Flask(__name__)
 MODBUS_IPS = ["192.168.0.1"]
 MODBUS_PORT = 504
 
+COILS = {
+    "SetStandby": 0,
+    "SetInactive": 1,
+    "ResetCounters": 2
+}
+
 REGISTERS = {
     "PLC ID": 0,
     "RedundancyState": 1,
@@ -115,6 +121,16 @@ def index():
                 {% endfor %}
             </tr>
             {% endfor %}
+            <tr><td></td>
+                {% for ip in modbus_ips %}
+                <td><button onclick="sendCoil('{{ ip }}', 'SetStandby')">Set Standby</button></td>
+                {% endfor %}
+            </tr>
+            <tr><td></td>
+                {% for ip in modbus_ips %}
+                <td><button onclick="sendCoil('{{ ip }}', 'SetInactive')">Set Inactive</button></td>
+                {% endfor %}
+            </tr>
         </table>
         <button onclick="resetRegisters()">Reset Counters</button>
         <form onsubmit="setIPs(); return false;" style="margin-top: 20px; display: flex; align-items: center; gap: 10px;">
@@ -148,6 +164,14 @@ def index():
                 fetch('/reset', { method: 'POST' });
             }
 
+            function sendCoil(ip, action) {
+                fetch(`/coil`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip, action })
+                });
+            }
+
             setInterval(updateTable, 500);  // Update table every 500ms
         </script>
     </body>
@@ -170,15 +194,32 @@ def get_values():
                 formatted_data[ip][key] = value
     return jsonify(formatted_data)
 
-
 @app.route("/reset", methods=["POST"])
 def reset():
-    for ip in user_ips():
+    for ip in MODBUS_IPS:
         client = ModbusTcpClient(ip, port=MODBUS_PORT)
         if client.connect():
-            client.write_coil(2, True)
+            client.write_coil(COILS['ResetCounters'], True)
             client.close()
     return '', 204
+
+@app.route("/coil", methods=["POST"])
+def set_coil():
+    req = request.get_json()
+    ip = req.get("ip")
+    action = req.get("action")
+    coil_addr = COILS.get(action)
+
+    print (f"Setting coil {coil_addr} on {ip}")
+    if not ip or coil_addr is None:
+        return "Invalid request", 400
+
+    client = ModbusTcpClient(ip, port=MODBUS_PORT)
+    if client.connect():
+        client.write_coil(coil_addr, True)
+        client.close()
+        return '', 204
+    return "Connection failed", 500
 
 if __name__ == "__main__":
     threading.Thread(target=update_loop, daemon=True).start()
