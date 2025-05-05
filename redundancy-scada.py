@@ -24,7 +24,7 @@ The web interface displays the current values of the monitored registers and all
 Author: Klaus Becker
 """
 
-from flask import Flask, jsonify, render_template_string, request
+from flask import Flask, jsonify, render_template_string, request, make_response
 from pymodbus.client.sync import ModbusTcpClient
 import threading
 import time
@@ -60,11 +60,20 @@ REDUNDANCY_STATE = {
     5: "INACTIVE",
 }
 
-data = {ip: {name: 0 for name in REGISTERS} for ip in MODBUS_IPS}
+data = {}
+
+def get_cookie_ips():
+    cookie = request.cookies.get("selected_ips")
+    if cookie:
+        return [ip.strip() for ip in cookie.split(",") if ip]
+    return MODBUS_IPS
+
 
 def update_loop():
     while True:
         for ip in MODBUS_IPS:
+            if ip not in data:
+                data[ip] = {name: 0 for name in REGISTERS}
             client = ModbusTcpClient(ip, port=MODBUS_PORT)
             if client.connect():
                 rr = client.read_holding_registers(0, len(REGISTERS))
@@ -76,7 +85,13 @@ def update_loop():
 
 @app.route("/")
 def index():
-    return render_template_string("""
+    global MODBUS_IPS
+    cookie_ips = get_cookie_ips()
+    MODBUS_IPS = cookie_ips
+    for ip in cookie_ips:
+        if ip not in data:
+            data[ip] = {name: 0 for name in REGISTERS}
+    html = """
     <!DOCTYPE html>
     <html>
     <head>
@@ -85,7 +100,8 @@ def index():
             body { font-family: sans-serif; padding: 30px; }
             table { border-collapse: collapse; table-layout: auto; width: auto; }
             th, td { padding: 10px; border: 1px solid #ccc; text-align: left; }
-            button { padding: 6px 14px; margin-top: 20px; }
+            button { padding: 8px 16px; border: none; background-color: #007BFF; color: white; border-radius: 6px; cursor: pointer; }
+            input { padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; width: 320px; }
         </style>
     </head>
     <body>
@@ -101,8 +117,18 @@ def index():
             {% endfor %}
         </table>
         <button onclick="resetRegisters()">Reset Counters</button>
-
+        <form onsubmit="setIPs(); return false;" style="margin-top: 20px; display: flex; align-items: center; gap: 10px;">
+            <label for="ipInput" style="font-weight: bold;">IPs:</label>
+            <input type="text" id="ipInput" placeholder="192.168.20.101,192.168.18.65">
+            <button type="submit">Update</button>
+        </form>
         <script>
+            function setIPs() {
+                const ips = document.getElementById("ipInput").value.replace(/\s/g, "");
+                document.cookie = `selected_ips=${ips};path=/`;
+                location.reload();
+            }
+
             function updateTable() {
                 fetch('/values')
                     .then(res => res.json())
@@ -126,7 +152,9 @@ def index():
         </script>
     </body>
     </html>
-    """, modbus_ips=MODBUS_IPS, registers=REGISTERS.keys(), data=data)
+    """
+    resp = make_response(render_template_string(html, modbus_ips=cookie_ips, registers=REGISTERS.keys(), data=data))
+    return resp
 
 @app.route("/values")
 def get_values():
@@ -145,7 +173,7 @@ def get_values():
 
 @app.route("/reset", methods=["POST"])
 def reset():
-    for ip in MODBUS_IPS:
+    for ip in user_ips():
         client = ModbusTcpClient(ip, port=MODBUS_PORT)
         if client.connect():
             client.write_coil(2, True)
