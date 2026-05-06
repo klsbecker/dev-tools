@@ -3,7 +3,7 @@
 # ===============================================================
 # Script Name: vscode-remote-connector.sh
 #
-# Author: Klaus Becker
+# Author: Klaus Becker (klausbecker2002@gmail.com)
 #
 # Description:
 # This script connects to an already running Visual Studio Code 
@@ -34,6 +34,12 @@ MAX_RETRY=10
 # Flag to enable debug mode
 DEBUG=false
 
+# Directory where VSCode server scripts are located
+VSCODE_SERVER_DIR="$HOME/.vscode-server"
+
+# IPC path variable
+VSCODE_IPC_PATH="/run/user/$(id -u)/vscode-ipc-*"
+
 log_debug() {
     if [[ "$DEBUG" == true ]]; then
         echo "DEBUG: $1"
@@ -59,7 +65,7 @@ for i in $(seq 1 $MAX_RETRY); do
     log_debug "Attempt $i to connect to VSCode instance."
 
     # Fetch the VSCode remote command line script based on the most recent installation
-    script=$(ls ~/.vscode-server/bin/*/bin/remote-cli/code -t 2>/dev/null | tail -1)
+    script=$(find $VSCODE_SERVER_DIR -type f -name "code" -printf '%T@ %p\n' | sort -n | tail -1 | awk '{print $2}')
 
     if [[ -z ${script} ]]; then
         log_error "VSCode remote script not found. Ensure VSCode is installed and configured correctly."
@@ -69,7 +75,7 @@ for i in $(seq 1 $MAX_RETRY); do
     fi
 
     # Find the most recent VSCode IPC socket file
-    socket=$(ls /run/user/$UID/vscode-ipc-* -t 2>/dev/null | head -n$i | tail -1)
+    socket=$(find $VSCODE_IPC_PATH -user $USER -printf '%T@ %p\n' | sort -nr | head -n 1 | awk '{print $2}')
 
     if [[ -z ${socket} ]]; then
         log_error "VSCode IPC socket not found. Is VSCode running on this system?"
